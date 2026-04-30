@@ -1,0 +1,108 @@
+THESE ARE THE PROJECT NAMING CONVENTION RULES YOU MUST FOLLOW . 
+
+
+
+#include <stdint.h>
+#include <stdio.h>
+
+// --- System State ---
+int clock_cycle = 1;
+
+// --- Physical Hardware Components ---
+// Main Memory: 2048 rows of 32-bit words
+// Indices 0-1023: Instructions
+// Indices 1024-2047: Data
+int32_t memory[2048]; 
+
+// Register File: 32 General-Purpose Registers
+// registers[0] must ALWAYS remain 0
+int32_t registers[32]; 
+
+// Program Counter
+int32_t PC = 0;
+// --- Pipeline "Baton" Struct ---
+typedef struct {
+    int is_active;           // 1 if an instruction is currently in this stage, 0 if empty/flushed
+    int cycles_remaining;    // Used to track stages that take 2 cycles (ID and EX)
+
+    // Data populated during FETCH
+    int32_t instruction_address; // Where did this instruction come from in memory?
+    int32_t raw_instruction;     // The raw 32-bit binary pulled from memory
+
+    // Data populated during DECODE
+    // We parse all fields just in case, even if the specific instruction type doesn't use them
+    int opcode;
+    int r1;       // Destination register (usually)
+    int r2;       // Source register 1
+    int r3;       // Source register 2 (for R-Type)
+    int shamt;    // Shift amount (for SLL/SRL)
+    int32_t imm;  // Immediate value (for I-Type/Branches). Must be signed!
+    int32_t address;// Jump address (for J-Type)
+
+    // Values read from registers during Decode
+    int32_t val_r2; 
+    int32_t val_r3; 
+
+    // Data populated during EXECUTE
+    int32_t alu_result;      // Result of math/logic operations
+    int branch_taken;        // 1 if a branch/jump condition was met, 0 otherwise
+    int32_t branch_target;   // The calculated address to jump to (if branch_taken == 1)
+
+    // Data populated during MEMORY
+    int32_t mem_read_data;   // Data loaded from main memory (for LW)
+
+} InstructionContext;
+// --- Pipeline Stages ---
+InstructionContext IF_Stage;
+InstructionContext ID_Stage;
+InstructionContext EX_Stage;
+InstructionContext MEM_Stage;
+InstructionContext WB_Stage;
+// --- Instruction Opcodes ---
+#define OP_ADD  0
+#define OP_SUB  1
+#define OP_MULI 2
+#define OP_ADDI 3
+#define OP_BNE  4
+#define OP_ANDI 5
+#define OP_XORI 6
+#define OP_J    7
+#define OP_SLL  8
+#define OP_SRL  9
+#define OP_LW   10
+#define OP_SW   11
+System Architect & Clock Controller
+The Job: You own the main() function and the overarching pipeline loop.
+
+Key Responsibilities: You will build the while loop that increments the clock cycles. You are responsible for enforcing the specific Package 1 rule: alternating between [IF, ID, EX, WB] and [ID, EX, MEM, WB] cycles so that Fetch and Memory never run at the same time. You will also manage the structs that pass instruction states between the different stages.
+
+The Parser & Memory Initializer
+The Job: You are the bridge between the text file and the hardware.
+
+Key Responsibilities: You will write the C code that opens program.txt and reads the assembly strings (like ADDI R1 R2 5). You will use C string manipulation to translate those commands into their raw 32-bit binary integer equivalents and load them directly into memory addresses 0 to 1023.
+Front-End: Fetch & Decode (IF & ID)
+The Job: You are the instruction intake valve.
+
+Key Responsibilities:
+
+Fetch: Read the 32-bit instruction from memory using the PC, then increment the PC.
+
+Decode: Use bitwise operators (shifts >> and masks &) to slice that 32-bit integer into its components: Opcode, R1, R2, R3, Immediate, and Shift Amount.
+
+Execution Unit: ALU Engineer (EX - Part 1)
+The Job: You handle all the math and data manipulation in the Execute stage.
+
+Key Responsibilities: You will program the logic for the arithmetic and logical instructions: ADD, SUB, MULI, ADDI, ANDI, XORI, SLL, and SRL. You also need to make sure this logic accurately simulates taking 2 full clock cycles to complete.
+Execution Unit: Branch & Hazard Manager (EX - Part 2)
+The Job: You handle the control flow and keep the pipeline from crashing.
+
+Key Responsibilities: You will program the logic for the BNE (Branch if Not Equal) and J (Jump) instructions, calculating their target addresses. Most importantly, you will write the logic that "flushes" (clears out) the Fetch and Decode stages if a branch is taken, ensuring the processor doesn't execute the wrong instructions.
+
+Back-End: Memory & Write-Back (MEM & WB)
+The Job: You handle the final destinations of the data.
+
+Key Responsibilities:
+
+Memory: You will write the logic for the LW (Load Word) and SW (Store Word) instructions, specifically interacting with the data memory at addresses 1024 to 2047.
+
+Write-Back: You will write the code that saves the final calculated values back into the registers[] array, strictly enforcing the hardware rule that registers[0] must never be overwritten.
