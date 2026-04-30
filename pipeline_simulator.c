@@ -9,6 +9,7 @@ int clock_cycle = 1;
 int32_t memory[2048];    // 0-1023: Instructions, 1024-2047: Data
 int32_t registers[32];   // R0 to R31 (R0 is always 0)
 int32_t PC = 0;          // Program Counter
+int skip_next_fetch = 0; // <--- NEW: Hardware delay simulator for branching
 
 // ==========================================
 // 2. THE PIPELINE BATON (Instruction Context)
@@ -113,6 +114,7 @@ int main() {
                 if (EX_Stage.branch_taken) {
                     PC = EX_Stage.branch_target; // Update PC
                     memset(&ID_Stage, 0, sizeof(InstructionContext)); // Flush Decode directly
+                    skip_next_fetch = 1; // <--- NEW: Skip the next fetch cycle
                 }
                 
                 MEM_Stage = EX_Stage; // Direct transfer to MEM
@@ -136,12 +138,16 @@ int main() {
             }
         }
 
-        // 5. FETCH (Runs only on ODD clock cycles to avoid memory collision)
-        if (clock_cycle % 2 != 0 && PC >= 0 && PC < 1024) {
-            IF_Stage.is_active = 1;
-            Fetch();
-            ID_Stage = IF_Stage; // Direct transfer to ID
-            memset(&IF_Stage, 0, sizeof(InstructionContext));
+        // 5. FETCH (Runs only on ODD clock cycles and when MEM is not active)
+        if (clock_cycle % 2 != 0 && !MEM_Stage.is_active && PC >= 0 && PC < 1024) {
+            if (skip_next_fetch) {         // <--- NEW: Check if we need to simulate the delay
+                skip_next_fetch = 0;       // <--- NEW: Reset the flag, and do NOT fetch this cycle
+            } else {                       // <--- NEW: Otherwise, fetch normally
+                IF_Stage.is_active = 1;
+                Fetch();
+                ID_Stage = IF_Stage; // Direct transfer to ID
+                memset(&IF_Stage, 0, sizeof(InstructionContext));
+            }                              // <--- NEW
         }
 
         // Enforce Hardwired Zero Register
