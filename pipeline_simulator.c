@@ -28,8 +28,8 @@ int32_t PC = 0;          // Program Counter
 // 2. THE PIPELINE BATON (Instruction Context)
 // ==========================================
 typedef struct {
-    int is_active;           // 1 if instruction is here, 0 if empty
-    int cycles_remaining;    // Tracks the 2-cycle requirement for ID and EX
+    int is_active;           // 1 if an instruction is currently in this stage, 0 if empty/flushed
+    int cycles_remaining;    // Used to track stages that take 2 cycles (ID and EX)
 
     // Data populated during FETCH
     int32_t instruction_address; // Where did this instruction come from in memory?
@@ -38,11 +38,17 @@ typedef struct {
     // Data populated during DECODE
     // We parse all fields just in case, even if the specific instruction type doesn't use them
     int opcode;
-    int r1, r2, r3, shamt;
-    int32_t imm, address;
-    int32_t val_r1; // Value read from r1 register during Decode (needed for BNE)
-    int32_t val_r2; // Value read from r2 register during Decode
-    int32_t val_r3; // Value read from r3 register during Decode
+    int r1;       // Destination register (usually)
+    int r2;       // Source register 1
+    int r3;       // Source register 2 (for R-Type)
+    int shamt;    // Shift amount (for SLL/SRL)
+    int32_t imm;  // Immediate value (for I-Type/Branches). Must be signed!
+    int32_t address;// Jump address (for J-Type)
+
+    // Values read from registers during Decode
+    int32_t val_r1; // Value of r1 (needed for BNE: R1 != R2)
+    int32_t val_r2; 
+    int32_t val_r3;
 
     // Destination Register (Where is the result going?)
     int dest_reg;            // Register to write back to (0 to 31)
