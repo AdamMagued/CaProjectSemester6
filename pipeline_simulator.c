@@ -2,6 +2,20 @@
 #include <stdint.h>
 #include <string.h>
 
+// --- Instruction Opcodes (Package 1) ---
+#define OP_ADD  0
+#define OP_SUB  1
+#define OP_MULI 2
+#define OP_ADDI 3
+#define OP_BNE  4
+#define OP_ANDI 5
+#define OP_XORI 6
+#define OP_J    7
+#define OP_SLL  8
+#define OP_SRL  9
+#define OP_LW   10
+#define OP_SW   11
+
 // ==========================================
 // 1. GLOBAL HARDWARE STATE
 // ==========================================
@@ -16,17 +30,18 @@ int skip_next_fetch = 0; // <--- NEW: Hardware delay simulator for branching
 // ==========================================
 typedef struct {
     int is_active;           // 1 if instruction is here, 0 if empty
-    int cycles_in_stage;     // Tracks the 2-cycle requirement for ID and EX
-    
-    // Fetch Data
-    int32_t pc_address;      
-    int32_t raw_instruction; 
+    int cycles_remaining;    // Tracks the 2-cycle requirement for ID and EX
+
+    // Data populated during FETCH
+    int32_t instruction_address; // Where did this instruction come from in memory?
+    int32_t raw_instruction;     // The raw 32-bit binary pulled from memory
 
     // Decode Data
     int opcode;
     int r1, r2, r3, shamt;
     int32_t imm, address;
-    int32_t val_r1, val_r2, val_r3; 
+    int32_t val_r2; // Value read from r2 register during Decode
+    int32_t val_r3; // Value read from r3 register during Decode
 
     // NEW: Destination Register (Where is the result going?)
     int dest_reg;            // Register to write back to (0 to 31)
@@ -102,13 +117,13 @@ int main() {
 
         // 3. EXECUTE (Takes 2 cycles)
         if (EX_Stage.is_active) {
-            EX_Stage.cycles_in_stage++;
+            EX_Stage.cycles_remaining++;
             
             // Execute() is called twice, ensure no duplicate state changes inside it!
             Execute();
             
             // Only pass to MEM if it has finished its 2nd cycle
-            if (EX_Stage.cycles_in_stage == 2) {
+            if (EX_Stage.cycles_remaining == 2) {
                 
                 // HAZARD HANDLING: If a branch is taken, flush the pipeline
                 if (EX_Stage.branch_taken) {
@@ -118,36 +133,38 @@ int main() {
                 }
                 
                 MEM_Stage = EX_Stage; // Direct transfer to MEM
-                MEM_Stage.cycles_in_stage = 0; // Reset for MEM stage
+                MEM_Stage.cycles_remaining = 0; // Reset for MEM stage
                 memset(&EX_Stage, 0, sizeof(InstructionContext));
             }
         }
 
         // 4. DECODE (Takes 2 cycles)
         if (ID_Stage.is_active) {
-            ID_Stage.cycles_in_stage++;
+            ID_Stage.cycles_remaining++;
             
             // Decode() is called twice, ensure no duplicate state changes inside it!
             Decode();
             
             // Only pass to EX if it has finished its 2nd cycle
-            if (ID_Stage.cycles_in_stage == 2) {
+            if (ID_Stage.cycles_remaining == 2) {
                 EX_Stage = ID_Stage; // Direct transfer to EX
-                EX_Stage.cycles_in_stage = 0; // Reset for EX stage
+                EX_Stage.cycles_remaining = 0; // Reset for EX stage
                 memset(&ID_Stage, 0, sizeof(InstructionContext));
             }
         }
 
-        // 5. FETCH (Runs only on ODD clock cycles and when MEM is not active)
-        if (clock_cycle % 2 != 0 && !MEM_Stage.is_active && PC >= 0 && PC < 1024) {
-            if (skip_next_fetch) {         // <--- NEW: Check if we need to simulate the delay
-                skip_next_fetch = 0;       // <--- NEW: Reset the flag, and do NOT fetch this cycle
-            } else {                       // <--- NEW: Otherwise, fetch normally
+        // 5. FETCH (Runs only on ODD clock cycles - Von Neumann mutual exclusion enforced by parity)
+        // MEM_Stage only becomes active at the end of ODD cycles (after EX finishes),
+        // so MEM only executes on EVEN cycles. Fetch on ODD cycles never collides with MEM.
+        if (clock_cycle % 2 != 0 && PC >= 0 && PC < 1024) {
+            if (skip_next_fetch) {         // Hardware delay simulator for branch penalty
+                skip_next_fetch = 0;       // Reset flag, skip this fetch cycle
+            } else {                       // Normal fetch
                 IF_Stage.is_active = 1;
                 Fetch();
                 ID_Stage = IF_Stage; // Direct transfer to ID
                 memset(&IF_Stage, 0, sizeof(InstructionContext));
-            }                              // <--- NEW
+            }
         }
 
         // Enforce Hardwired Zero Register
@@ -175,7 +192,7 @@ void Fetch() {
         IF_Stage.is_active = 0; // Don't pass an empty instruction down
         return;
     }
-    IF_Stage.pc_address = PC;
+    IF_Stage.instruction_address = PC;
     IF_Stage.raw_instruction = memory[PC];
     PC++; // Increment PC
 }
