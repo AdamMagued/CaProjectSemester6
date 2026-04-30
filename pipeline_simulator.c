@@ -40,6 +40,7 @@ typedef struct {
     int opcode;
     int r1, r2, r3, shamt;
     int32_t imm, address;
+    int32_t val_r1; // Value read from r1 register during Decode (needed for BNE)
     int32_t val_r2; // Value read from r2 register during Decode
     int32_t val_r3; // Value read from r3 register during Decode
 
@@ -204,7 +205,7 @@ void Decode() {
         ID_Stage.r1     = (inst >> 23) & 0x1F;
         ID_Stage.r2     = (inst >> 18) & 0x1F;
         ID_Stage.r3     = (inst >> 13) & 0x1F;
-        ID_Stage.shamt  = (inst >> 8)  & 0x1F;
+        ID_Stage.shamt  = inst & 0x1FFF;  // SHAMT is 13 bits [12:0]
         
         // Immediate (18 bits, sign extended)
         int32_t imm = inst & 0x3FFFF;
@@ -216,7 +217,8 @@ void Decode() {
         // Address (28 bits)
         ID_Stage.address = inst & 0xFFFFFFF;
         
-        // Read from registers (only val_r2 and val_r3 per naming convention)
+        // Read values from registers during Decode
+        ID_Stage.val_r1 = registers[ID_Stage.r1]; // Needed for BNE (R1 != R2)
         ID_Stage.val_r2 = registers[ID_Stage.r2];
         ID_Stage.val_r3 = registers[ID_Stage.r3];
         
