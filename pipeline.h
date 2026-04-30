@@ -57,6 +57,7 @@ typedef struct {
     int32_t address; /* Jump address (J-Type, 28 bits) */
 
     /* Values read from register file during Decode */
+    int32_t val_r1; /* Value of r1 (needed for ADD/SUB where R1 is a source, and BNE) */
     int32_t val_r2;
     int32_t val_r3;
 

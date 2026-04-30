@@ -239,6 +239,10 @@ void Decode() {
         switch (ID_Stage.opcode) {
             case 0: // ADD
             case 1: // SUB
+                ID_Stage.reg_write = 1;
+                ID_Stage.dest_reg = ID_Stage.r3; // R3 is the destination for ADD/SUB!
+                break;
+
             case 8: // SLL
             case 9: // SRL
             case 2: // MULI
@@ -246,7 +250,7 @@ void Decode() {
             case 5: // ANDI
             case 6: // XORI
                 ID_Stage.reg_write = 1;
-                ID_Stage.dest_reg = ID_Stage.r1;
+                ID_Stage.dest_reg = ID_Stage.r1; // R1 is the destination for these
                 break;
                 
             case 10: // LW

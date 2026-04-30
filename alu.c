@@ -55,7 +55,6 @@ void execute_alu(void) {
 
         /* Read operand values that were captured during Decode */
         int32_t val_r2 = EX_Stage.val_r2;  /* Value of source register R2 */
-        int32_t val_r3 = EX_Stage.val_r3;  /* Value of source register R3 (R-Type only) */
         int32_t imm    = EX_Stage.imm;     /* Sign-extended immediate (I-Type only) */
         int shamt      = EX_Stage.shamt;   /* Shift amount (SLL/SRL only) */
 
@@ -70,19 +69,21 @@ void execute_alu(void) {
             case OP_ADD:
                 /*
                  * ADD R1, R2, R3
-                 * R1 = R2 + R3
+                 * R3 = R1 + R2
+                 * NOTE: For ADD/SUB, R1 and R2 are sources, R3 is destination!
                  */
-                result = val_r2 + val_r3;
-                printf("  [EX] ADD: %d + %d = %d\n", val_r2, val_r3, result);
+                result = EX_Stage.val_r1 + val_r2;
+                printf("  [EX] ADD: %d + %d = %d\n", EX_Stage.val_r1, val_r2, result);
                 break;
 
             case OP_SUB:
                 /*
                  * SUB R1, R2, R3
-                 * R1 = R2 - R3
+                 * R3 = R1 - R2
+                 * NOTE: For ADD/SUB, R1 and R2 are sources, R3 is destination!
                  */
-                result = val_r2 - val_r3;
-                printf("  [EX] SUB: %d - %d = %d\n", val_r2, val_r3, result);
+                result = EX_Stage.val_r1 - val_r2;
+                printf("  [EX] SUB: %d - %d = %d\n", EX_Stage.val_r1, val_r2, result);
                 break;
 
             /* --------------------------------------------------------
