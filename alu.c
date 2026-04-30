@@ -46,11 +46,12 @@ void execute_alu(void) {
     int opcode = EX_Stage.opcode;
 
     /*
-     * First cycle of Execute (cycles_remaining == 2):
-     * We perform the actual computation here, so the result is ready
-     * by the time the second cycle ends.
+     * First cycle of Execute (cycles_remaining == 1):
+     * The main loop increments cycles_remaining before calling this function.
+     * So on the 1st call it is 1, and on the 2nd call it is 2.
+     * We perform the actual computation on the first call.
      */
-    if (EX_Stage.cycles_remaining == 2) {
+    if (EX_Stage.cycles_remaining == 1) {
 
         /* Read operand values that were captured during Decode */
         int32_t val_r2 = EX_Stage.val_r2;  /* Value of source register R2 */
@@ -169,22 +170,18 @@ void execute_alu(void) {
 
         /* Store the computed result in the pipeline register */
         EX_Stage.alu_result = result;
-
-        /* Move from first cycle to second cycle */
-        EX_Stage.cycles_remaining = 1;
+        /* NOTE: Do NOT touch cycles_remaining here — the main loop owns it */
 
         printf("  [EX] Cycle 1 of 2 complete for instruction at address %d (opcode %d)\n",
                EX_Stage.instruction_address, opcode);
 
-    } else if (EX_Stage.cycles_remaining == 1) {
+    } else if (EX_Stage.cycles_remaining == 2) {
         /*
          * Second cycle of Execute:
          * The ALU result was already computed on the first cycle.
-         * We just mark it as done so the pipeline controller can
-         * advance this instruction to the MEM stage.
+         * The main loop will pass this instruction to MEM after this call.
+         * NOTE: Do NOT touch cycles_remaining here — the main loop owns it.
          */
-        EX_Stage.cycles_remaining = 0;
-
         printf("  [EX] Cycle 2 of 2 complete for instruction at address %d (opcode %d). "
                "ALU Result = %d\n",
                EX_Stage.instruction_address, opcode, EX_Stage.alu_result);
