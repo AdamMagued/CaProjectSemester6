@@ -265,7 +265,119 @@ void Decode() {
 }
 
 void Execute() { 
-    /* Roles 4 & 5 build this. Remember it might be called twice per instruction! */ 
+    /* 
+     * ALU Engineer (EX - Part 1): Handles all math/logic/shift instructions.
+     * This function is called TWICE per instruction (2-cycle Execute stage).
+     *
+     * Cycle 1 (cycles_remaining == 1): Perform the actual ALU computation.
+     * Cycle 2 (cycles_remaining == 2): Result already computed; just log completion.
+     *
+     * Non-ALU opcodes (BNE, J) are left for the Branch & Hazard Manager (Part 2).
+     * LW/SW address calculation (R2 + IMM) is also done here since it's ALU work.
+     */
+
+    // --- CYCLE 1: Perform the computation ---
+    if (EX_Stage.cycles_remaining == 1) {
+
+        int32_t val_r2 = EX_Stage.val_r2;  // Value of source register R2
+        int32_t val_r3 = EX_Stage.val_r3;  // Value of source register R3 (R-Type only)
+        int32_t imm    = EX_Stage.imm;     // Sign-extended immediate (I-Type only)
+        int shamt      = EX_Stage.shamt;   // Shift amount (SLL/SRL only)
+
+        switch (EX_Stage.opcode) {
+
+            case OP_ADD:
+                // ADD R1, R2, R3  ->  R1 = R2 + R3
+                EX_Stage.alu_result = val_r2 + val_r3;
+                printf("  [EX] ADD: R%d = %d + %d = %d\n",
+                       EX_Stage.r1, val_r2, val_r3, EX_Stage.alu_result);
+                break;
+
+            case OP_SUB:
+                // SUB R1, R2, R3  ->  R1 = R2 - R3
+                EX_Stage.alu_result = val_r2 - val_r3;
+                printf("  [EX] SUB: R%d = %d - %d = %d\n",
+                       EX_Stage.r1, val_r2, val_r3, EX_Stage.alu_result);
+                break;
+
+            case OP_MULI:
+                // MULI R1, R2, IMM  ->  R1 = R2 * IMM
+                EX_Stage.alu_result = val_r2 * imm;
+                printf("  [EX] MULI: R%d = %d * %d = %d\n",
+                       EX_Stage.r1, val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_ADDI:
+                // ADDI R1, R2, IMM  ->  R1 = R2 + IMM
+                EX_Stage.alu_result = val_r2 + imm;
+                printf("  [EX] ADDI: R%d = %d + %d = %d\n",
+                       EX_Stage.r1, val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_ANDI:
+                // ANDI R1, R2, IMM  ->  R1 = R2 & IMM
+                EX_Stage.alu_result = val_r2 & imm;
+                printf("  [EX] ANDI: R%d = %d & %d = %d\n",
+                       EX_Stage.r1, val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_XORI:
+                // XORI R1, R2, IMM  ->  R1 = R2 ^ IMM
+                EX_Stage.alu_result = val_r2 ^ imm;
+                printf("  [EX] XORI: R%d = %d ^ %d = %d\n",
+                       EX_Stage.r1, val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_SLL:
+                // SLL R1, R2, SHAMT  ->  R1 = R2 << SHAMT
+                // R3 is 0 in the instruction format for shift instructions.
+                // SHAMT is always positive (5-bit unsigned).
+                EX_Stage.alu_result = val_r2 << shamt;
+                printf("  [EX] SLL: R%d = %d << %d = %d\n",
+                       EX_Stage.r1, val_r2, shamt, EX_Stage.alu_result);
+                break;
+
+            case OP_SRL:
+                // SRL R1, R2, SHAMT  ->  R1 = R2 >> SHAMT (logical, zero-fill)
+                // Cast to uint32_t to ensure logical shift (no sign extension).
+                // SHAMT is always positive (5-bit unsigned).
+                EX_Stage.alu_result = (int32_t)((uint32_t)val_r2 >> shamt);
+                printf("  [EX] SRL: R%d = %d >>> %d = %d\n",
+                       EX_Stage.r1, val_r2, shamt, EX_Stage.alu_result);
+                break;
+
+            case OP_LW:
+                // LW R1, R2, IMM  ->  Address = R2 + IMM (ALU computes the address)
+                EX_Stage.alu_result = val_r2 + imm;
+                printf("  [EX] LW: Address = %d + %d = %d\n",
+                       val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_SW:
+                // SW R1, R2, IMM  ->  Address = R2 + IMM (ALU computes the address)
+                EX_Stage.alu_result = val_r2 + imm;
+                printf("  [EX] SW: Address = %d + %d = %d\n",
+                       val_r2, imm, EX_Stage.alu_result);
+                break;
+
+            case OP_BNE:
+            case OP_J:
+                // Branch & Jump are handled by Part 2 (Branch & Hazard Manager)
+                break;
+
+            default:
+                printf("  [EX] WARNING: Unknown opcode %d\n", EX_Stage.opcode);
+                break;
+        }
+
+        printf("  [EX] Cycle 1 of 2 for instruction at PC %d (opcode %d)\n",
+               EX_Stage.instruction_address, EX_Stage.opcode);
+
+    // --- CYCLE 2: Computation already done, just log ---
+    } else if (EX_Stage.cycles_remaining == 2) {
+        printf("  [EX] Cycle 2 of 2 for instruction at PC %d (opcode %d). ALU Result = %d\n",
+               EX_Stage.instruction_address, EX_Stage.opcode, EX_Stage.alu_result);
+    }
 }
 
 void MemoryAccess() { 
