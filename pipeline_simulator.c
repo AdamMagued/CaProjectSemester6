@@ -23,21 +23,14 @@ int clock_cycle = 1;
 int32_t memory[2048];    // 0-1023: Instructions, 1024-2047: Data
 int32_t registers[32];   // R0 to R31 (R0 is always 0)
 int32_t PC = 0;          // Program Counter
-int skip_next_fetch = 0; // <--- NEW: Hardware delay simulator for branching
 
 // ==========================================
 // 2. THE PIPELINE BATON (Instruction Context)
 // ==========================================
 typedef struct {
-<<<<<<< HEAD
     int is_active;           // 1 if instruction is here, 0 if empty
     int cycles_remaining;    // Tracks the 2-cycle requirement for ID and EX
 
-=======
-    int is_active;           // 1 if an instruction is currently in this stage, 0 if empty/flushed
-    int cycles_remaining;    // Used to track stages that take 2 cycles (ID and EX)
-    
->>>>>>> ec9ec06a6932a3d4228c1ab9f81c85e3aed67069
     // Data populated during FETCH
     int32_t instruction_address; // Where did this instruction come from in memory?
     int32_t raw_instruction;     // The raw 32-bit binary pulled from memory
@@ -45,23 +38,10 @@ typedef struct {
     // Data populated during DECODE
     // We parse all fields just in case, even if the specific instruction type doesn't use them
     int opcode;
-<<<<<<< HEAD
     int r1, r2, r3, shamt;
     int32_t imm, address;
     int32_t val_r2; // Value read from r2 register during Decode
     int32_t val_r3; // Value read from r3 register during Decode
-=======
-    int r1;       // Destination register (usually)
-    int r2;       // Source register 1
-    int r3;       // Source register 2 (for R-Type)
-    int shamt;    // Shift amount (for SLL/SRL)
-    int32_t imm;  // Immediate value (for I-Type/Branches). Must be signed!
-    int32_t address;// Jump address (for J-Type)
->>>>>>> ec9ec06a6932a3d4228c1ab9f81c85e3aed67069
-
-    // Values read from registers during Decode
-    int32_t val_r2; 
-    int32_t val_r3; 
 
     // Destination Register (Where is the result going?)
     int dest_reg;            // Register to write back to (0 to 31)
@@ -123,6 +103,17 @@ int main() {
         
         // 1. WRITE BACK (Takes 1 cycle, runs on Odd cycles usually)
         if (WB_Stage.is_active) {
+            
+            // HAZARD HANDLING: Delayed flush matching the TA's X+3 timeline.
+            // The branch_taken flag rides the baton through EX -> MEM -> WB.
+            // By the time it reaches WB, the "wrong" instructions have naturally
+            // populated EX and ID, exactly as the document's trace shows.
+            if (WB_Stage.branch_taken) {
+                PC = WB_Stage.branch_target; // Update PC for the new fetch below
+                memset(&EX_Stage, 0, sizeof(InstructionContext)); // Drop instruction in EX
+                memset(&ID_Stage, 0, sizeof(InstructionContext)); // Drop instruction in ID
+            }
+            
             WriteBack();
             // Instruction is finished, clear it out.
             memset(&WB_Stage, 0, sizeof(InstructionContext)); 
@@ -144,15 +135,7 @@ int main() {
             
             // Only pass to MEM if it has finished its 2nd cycle
             if (EX_Stage.cycles_remaining == 2) {
-                
-                // HAZARD HANDLING: If a branch is taken, flush the pipeline
-                if (EX_Stage.branch_taken) {
-                    PC = EX_Stage.branch_target; // Update PC
-                    memset(&ID_Stage, 0, sizeof(InstructionContext)); // Flush Decode directly
-                    skip_next_fetch = 1; // <--- NEW: Skip the next fetch cycle
-                }
-                
-                MEM_Stage = EX_Stage; // Direct transfer to MEM
+                MEM_Stage = EX_Stage; // Direct transfer to MEM (branch data rides along!)
                 MEM_Stage.cycles_remaining = 0; // Reset for MEM stage
                 memset(&EX_Stage, 0, sizeof(InstructionContext));
             }
@@ -173,18 +156,12 @@ int main() {
             }
         }
 
-        // 5. FETCH (Runs only on ODD clock cycles - Von Neumann mutual exclusion enforced by parity)
-        // MEM_Stage only becomes active at the end of ODD cycles (after EX finishes),
-        // so MEM only executes on EVEN cycles. Fetch on ODD cycles never collides with MEM.
+        // 5. FETCH (Runs only on ODD clock cycles)
         if (clock_cycle % 2 != 0 && PC >= 0 && PC < 1024) {
-            if (skip_next_fetch) {         // Hardware delay simulator for branch penalty
-                skip_next_fetch = 0;       // Reset flag, skip this fetch cycle
-            } else {                       // Normal fetch
-                IF_Stage.is_active = 1;
-                Fetch();
-                ID_Stage = IF_Stage; // Direct transfer to ID
-                memset(&IF_Stage, 0, sizeof(InstructionContext));
-            }
+            IF_Stage.is_active = 1;
+            Fetch();
+            ID_Stage = IF_Stage; // Direct transfer to ID
+            memset(&IF_Stage, 0, sizeof(InstructionContext));
         }
 
         // Enforce Hardwired Zero Register
