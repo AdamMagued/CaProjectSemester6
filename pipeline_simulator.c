@@ -82,7 +82,8 @@ InstructionContext WB_Stage  = {0};
 void Fetch();
 void Decode();
 void Execute();
-void execute_alu(void); // Implemented in alu.c
+void execute_alu(void);    // Implemented in alu.c
+void execute_branch(void); // Implemented in branch.c
 void MemoryAccess();
 void WriteBack();
 void PrintCycleState();
@@ -278,8 +279,8 @@ void Decode() {
 }
 
 void Execute() {
-    execute_alu(); // ALU logic lives in alu.c
-    // execute_branch() will be called here once branch.c is implemented (Role 5)
+    execute_alu();     // ALU logic lives in alu.c
+    execute_branch();  // Branch/Jump logic lives in branch.c
 }
 
 void MemoryAccess() { 

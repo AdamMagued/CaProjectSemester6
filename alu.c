@@ -18,7 +18,67 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include "pipeline.h"  /* Shared header with InstructionContext, opcodes, globals */
+
+/* ================================================================
+ * External references to pipeline_simulator.c globals
+ * ================================================================
+ *
+ * The canonical struct definition and global variables live in
+ * pipeline_simulator.c.  We re-declare the struct identically here
+ * and use 'extern' so the linker connects us to the same EX_Stage.
+ * ================================================================ */
+
+/* --- Instruction Opcodes (must match pipeline_simulator.c) --- */
+#define OP_ADD  0
+#define OP_SUB  1
+#define OP_MULI 2
+#define OP_ADDI 3
+#define OP_BNE  4
+#define OP_ANDI 5
+#define OP_XORI 6
+#define OP_J    7
+#define OP_SLL  8
+#define OP_SRL  9
+#define OP_LW   10
+#define OP_SW   11
+
+/* --- Pipeline Baton Struct (must match pipeline_simulator.c) --- */
+typedef struct {
+    int is_active;
+    int cycles_remaining;
+
+    int32_t instruction_address;
+    int32_t raw_instruction;
+
+    int opcode;
+    int r1;
+    int r2;
+    int r3;
+    int shamt;
+    int32_t imm;
+    int32_t address;
+
+    int32_t val_r1;
+    int32_t val_r2;
+    int32_t val_r3;
+
+    int dest_reg;
+
+    int32_t alu_result;
+    int branch_taken;
+    int32_t branch_target;
+
+    int32_t mem_read_data;
+
+    int reg_write;
+    int mem_read;
+    int mem_write;
+    int mem_to_reg;
+
+} InstructionContext;
+
+/* The actual EX_Stage lives in pipeline_simulator.c */
+extern InstructionContext EX_Stage;
 
 /*
  * execute_alu()
@@ -164,7 +224,8 @@ void execute_alu(void) {
             default:
                 /*
                  * Non-ALU opcodes (BNE, J, LW, SW) are handled elsewhere.
-                 * We intentionally do NOT set alu_result for those.
+                 * BNE and J live in branch.c (execute_branch).
+                 * LW and SW are handled in the MEM stage.
                  */
                 break;
         }
