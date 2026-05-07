@@ -514,8 +514,8 @@ const Simulator = (() => {
       }
     }
 
-    // 5. FETCH (odd cycles only, not during a stall)
-    if (!stalled && clock_cycle % 2 !== 0 && PC >= 0 && PC < instruction_count) {
+    // 5. FETCH (odd cycles only, not during a stall, not if ID is still occupied)
+    if (!stalled && !ID_Stage.is_active && clock_cycle % 2 !== 0 && PC >= 0 && PC < instruction_count) {
       IF_Stage.is_active = 1;
       Fetch();
       if (IF_Stage.is_active) {

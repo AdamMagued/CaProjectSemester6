@@ -120,9 +120,9 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // 5. FETCH (Runs only on ODD clock cycles, and NOT during a stall)
+        // 5. FETCH (Runs only on ODD clock cycles, NOT during a stall, NOT if ID is occupied)
         int stalled = (ID_Stage.is_active && ID_Stage.cycles_remaining == 0);
-        if (!stalled && clock_cycle % 2 != 0 && PC >= 0 && PC < 1024) {
+        if (!stalled && !ID_Stage.is_active && clock_cycle % 2 != 0 && PC >= 0 && PC < 1024) {
             IF_Stage.is_active = 1;
             Fetch();
             if (IF_Stage.is_active) {
