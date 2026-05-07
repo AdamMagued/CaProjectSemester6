@@ -21,7 +21,8 @@ void MemoryAccess();
 void WriteBack();
 void PrintCycleState();
 void PrintFinalState();
-int  check_data_hazard();  // Returns 1 if ID must stall
+int  check_load_use_hazard();
+int32_t forward_value(int reg_idx, int32_t default_val);
 
 // ==========================================
 // 4. THE MAIN CLOCK ENGINE
@@ -98,23 +99,16 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // 4. DECODE (Takes 2 cycles) — with data hazard stalling
+        // 4. DECODE (Takes 2 cycles) — with forwarding + load-use stall
         if (ID_Stage.is_active) {
-            // Stall check: before the first decode cycle, see if source
-            // registers conflict with a producer still in the pipeline.
-            if (ID_Stage.cycles_remaining == 0 && check_data_hazard()) {
-                printf("  [STALL] Data hazard detected — pipeline stalled\n");
-                // Don't advance ID or fetch; the rest of the pipeline drains.
+            if (ID_Stage.cycles_remaining == 0 && check_load_use_hazard()) {
+                printf("  [STALL] Load-use hazard — pipeline stalled\n");
             } else {
                 ID_Stage.cycles_remaining++;
-                
-                // Decode() is called twice, ensure no duplicate state changes inside it!
                 Decode();
-                
-                // Only pass to EX if it has finished its 2nd cycle
                 if (ID_Stage.cycles_remaining == 2) {
-                    EX_Stage = ID_Stage; // Direct transfer to EX
-                    EX_Stage.cycles_remaining = 0; // Reset for EX stage
+                    EX_Stage = ID_Stage;
+                    EX_Stage.cycles_remaining = 0;
                     memset(&ID_Stage, 0, sizeof(InstructionContext));
                 }
             }
@@ -153,65 +147,63 @@ int main(int argc, char *argv[]) {
 }
 
 // ==========================================
-// DATA HAZARD DETECTION (Stalling)
+// DATA FORWARDING + LOAD-USE HAZARD
 // ==========================================
 
 /*
- * Determine which registers ID_Stage's instruction will READ.
- * We pre-parse from the raw instruction (decode hasn't run yet).
- *
- * Returns the number of source registers found (0, 1, or 2).
- * src1/src2 are set to the register indices, or -1 if unused.
+ * Forward a register value from EX/MEM/WB if a producer hasn't written back yet.
+ * Priority: EX > MEM > WB (most recent program-order instruction first).
  */
+int32_t forward_value(int reg_idx, int32_t default_val) {
+    if (reg_idx == 0) return 0;
+    // EX: alu_result available (computed at cycle 1)
+    if (EX_Stage.is_active && EX_Stage.reg_write && EX_Stage.dest_reg == reg_idx && !EX_Stage.mem_to_reg) {
+        printf("  [FWD] R%d <- EX (PC %d) = %d\n", reg_idx, EX_Stage.instruction_address, EX_Stage.alu_result);
+        return EX_Stage.alu_result;
+    }
+    // MEM: alu_result available, but NOT mem_read_data (LW not loaded yet)
+    if (MEM_Stage.is_active && MEM_Stage.reg_write && MEM_Stage.dest_reg == reg_idx && !MEM_Stage.mem_to_reg) {
+        printf("  [FWD] R%d <- MEM (PC %d) = %d\n", reg_idx, MEM_Stage.instruction_address, MEM_Stage.alu_result);
+        return MEM_Stage.alu_result;
+    }
+    // WB: both alu_result and mem_read_data available
+    if (WB_Stage.is_active && WB_Stage.reg_write && WB_Stage.dest_reg == reg_idx) {
+        int32_t val = WB_Stage.mem_to_reg ? WB_Stage.mem_read_data : WB_Stage.alu_result;
+        printf("  [FWD] R%d <- WB (PC %d) = %d\n", reg_idx, WB_Stage.instruction_address, val);
+        return val;
+    }
+    return default_val;
+}
+
 static void get_source_regs(int32_t raw, int *src1, int *src2) {
     int opcode = (raw >> 28) & 0xF;
     int r1     = (raw >> 23) & 0x1F;
     int r2     = (raw >> 18) & 0x1F;
-
     *src1 = -1;
     *src2 = -1;
-
     switch (opcode) {
-        case OP_ADD: case OP_SUB:   // ADD/SUB: reads R1 and R2, dest is R3
+        case OP_ADD: case OP_SUB: case OP_BNE: case OP_SW:
             *src1 = r1; *src2 = r2; break;
-        case OP_BNE:                // BNE: reads R1 and R2
-        case OP_SW:                 // SW: reads R1 (data) and R2 (base)
-            *src1 = r1; *src2 = r2; break;
-        case OP_MULI: case OP_ADDI: // I-type ALU: reads R2
-        case OP_ANDI: case OP_XORI:
-        case OP_SLL:  case OP_SRL:
-        case OP_LW:                 // LW: reads R2 (base addr)
+        case OP_MULI: case OP_ADDI: case OP_ANDI: case OP_XORI:
+        case OP_SLL: case OP_SRL: case OP_LW:
             *src1 = r2; break;
-        case OP_J:                  // J: no register read
-            break;
+        case OP_J: break;
     }
 }
 
-/*
- * Returns 1 if ID_Stage must stall due to a Read-After-Write hazard.
- * Checks against instructions in EX, MEM, and the new WB
- * (which hasn't called WriteBack() yet this cycle).
- */
-int check_data_hazard() {
+/* Only stall for load-use: LW in EX or MEM hasn't loaded data yet */
+int check_load_use_hazard() {
     if (!ID_Stage.is_active) return 0;
-
     int src1, src2;
     get_source_regs(ID_Stage.raw_instruction, &src1, &src2);
-
-    // No source registers → no hazard possible
     if (src1 == -1 && src2 == -1) return 0;
-
-    // Check each pipeline stage ahead that hasn't written back yet
-    InstructionContext *stages[] = { &EX_Stage, &MEM_Stage, &WB_Stage };
-    for (int i = 0; i < 3; i++) {
-        if (!stages[i]->is_active) continue;
-        if (!stages[i]->reg_write) continue;
+    InstructionContext *stages[] = { &EX_Stage, &MEM_Stage };
+    for (int i = 0; i < 2; i++) {
+        if (!stages[i]->is_active || !stages[i]->reg_write || !stages[i]->mem_to_reg) continue;
         int dest = stages[i]->dest_reg;
-        if (dest <= 0) continue;  // R0 never matters
-
+        if (dest <= 0) continue;
         if (dest == src1 || dest == src2) {
-            printf("  [HAZARD] R%d needed by ID (PC %d) but not yet written by PC %d\n",
-                   dest, ID_Stage.instruction_address, stages[i]->instruction_address);
+            printf("  [STALL] Load-use: LW at PC %d -> R%d not ready\n", stages[i]->instruction_address, dest);
             return 1;
         }
     }
@@ -256,10 +248,10 @@ void Decode() {
         // Address (28 bits)
         ID_Stage.address = inst & 0xFFFFFFF;
         
-        // Read values from registers during Decode
-        ID_Stage.val_r1 = registers[ID_Stage.r1]; // Needed for BNE (R1 != R2)
-        ID_Stage.val_r2 = registers[ID_Stage.r2];
-        ID_Stage.val_r3 = registers[ID_Stage.r3];
+        // Read values from registers, then apply forwarding
+        ID_Stage.val_r1 = forward_value(ID_Stage.r1, registers[ID_Stage.r1]);
+        ID_Stage.val_r2 = forward_value(ID_Stage.r2, registers[ID_Stage.r2]);
+        ID_Stage.val_r3 = forward_value(ID_Stage.r3, registers[ID_Stage.r3]);
         
         // Default control signals
         ID_Stage.reg_write  = 0;

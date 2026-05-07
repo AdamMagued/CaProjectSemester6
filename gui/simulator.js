@@ -207,9 +207,10 @@ const Simulator = (() => {
 
       ID_Stage.address = inst & 0xFFFFFFF;
 
-      ID_Stage.val_r1 = registers[ID_Stage.r1];
-      ID_Stage.val_r2 = registers[ID_Stage.r2];
-      ID_Stage.val_r3 = registers[ID_Stage.r3];
+      // Read from register file, then apply forwarding from pipeline
+      ID_Stage.val_r1 = forwardValue(ID_Stage.r1, registers[ID_Stage.r1]);
+      ID_Stage.val_r2 = forwardValue(ID_Stage.r2, registers[ID_Stage.r2]);
+      ID_Stage.val_r3 = forwardValue(ID_Stage.r3, registers[ID_Stage.r3]);
 
       ID_Stage.reg_write = 0;
       ID_Stage.mem_read = 0;
@@ -404,7 +405,37 @@ const Simulator = (() => {
     }
   }
 
-  /* ── Data Hazard Check (mirrors C stalling logic) ──────────── */
+  /* ── Data Forwarding ─────────────────────────────────────────
+   * Instead of stalling, grab the value directly from whichever
+   * pipeline stage has already computed it.
+   * Priority: EX > MEM > WB (most recent instruction first).
+   * ────────────────────────────────────────────────────────── */
+  function forwardValue(regIdx, defaultValue) {
+    if (regIdx === 0) return 0; // R0 hardwired
+    // EX: alu_result computed at cycle 1
+    if (EX_Stage.is_active && EX_Stage.reg_write && EX_Stage.dest_reg === regIdx) {
+      if (!EX_Stage.mem_to_reg) {
+        addLog(`[FWD] R${regIdx} <- EX (PC ${EX_Stage.instruction_address}) = ${EX_Stage.alu_result}`, 'info');
+        return EX_Stage.alu_result;
+      }
+    }
+    // MEM: just moved from EX — alu_result available, mem_read_data NOT yet
+    if (MEM_Stage.is_active && MEM_Stage.reg_write && MEM_Stage.dest_reg === regIdx) {
+      if (!MEM_Stage.mem_to_reg) {
+        addLog(`[FWD] R${regIdx} <- MEM (PC ${MEM_Stage.instruction_address}) = ${MEM_Stage.alu_result}`, 'info');
+        return MEM_Stage.alu_result;
+      }
+    }
+    // WB: MemoryAccess already ran, both alu_result and mem_read_data available
+    if (WB_Stage.is_active && WB_Stage.reg_write && WB_Stage.dest_reg === regIdx) {
+      const val = WB_Stage.mem_to_reg ? WB_Stage.mem_read_data : WB_Stage.alu_result;
+      addLog(`[FWD] R${regIdx} <- WB (PC ${WB_Stage.instruction_address}) = ${val}`, 'info');
+      return val;
+    }
+    return defaultValue;
+  }
+
+  /* ── Load-Use Hazard (only case that still requires a stall) ── */
   function getSourceRegs(raw) {
     const opcode = (raw >>> 28) & 0xF;
     const r1 = (raw >>> 23) & 0x1F;
@@ -420,16 +451,17 @@ const Simulator = (() => {
     return { src1, src2 };
   }
 
-  function checkDataHazard() {
+  function checkLoadUseHazard() {
     if (!ID_Stage.is_active) return false;
     const { src1, src2 } = getSourceRegs(ID_Stage.raw_instruction);
     if (src1 === -1 && src2 === -1) return false;
-    const stages = [EX_Stage, MEM_Stage, WB_Stage];
-    for (const s of stages) {
-      if (!s.is_active || !s.reg_write) continue;
+    // Only stall when producer is LW and data hasn't been loaded yet
+    const checkStages = [EX_Stage, MEM_Stage];
+    for (const s of checkStages) {
+      if (!s.is_active || !s.reg_write || !s.mem_to_reg) continue;
       if (s.dest_reg <= 0) continue;
       if (s.dest_reg === src1 || s.dest_reg === src2) {
-        addLog(`[STALL] R${s.dest_reg} needed by PC ${ID_Stage.instruction_address}, waiting on PC ${s.instruction_address}`, 'hazard');
+        addLog(`[STALL] Load-use: LW at PC ${s.instruction_address} -> R${s.dest_reg} not ready`, 'hazard');
         return true;
       }
     }
@@ -498,10 +530,10 @@ const Simulator = (() => {
       }
     }
 
-    // 4. DECODE (2 cycles) — with data hazard stalling
+    // 4. DECODE (2 cycles) — with forwarding + load-use stall
     let stalled = false;
     if (ID_Stage.is_active) {
-      if (ID_Stage.cycles_remaining === 0 && checkDataHazard()) {
+      if (ID_Stage.cycles_remaining === 0 && checkLoadUseHazard()) {
         stalled = true;
       } else {
         ID_Stage.cycles_remaining++;
