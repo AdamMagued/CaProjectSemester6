@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Interactive 5-Stage Pipeline Simulator for CSEN 601 — Package 1: Spicy Von Neumann Fillet">
+  <title>Pipeline Simulator — Package 1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ───── Top Navigation ───── -->
+  <header class="top-bar" id="topBar">
+    <div class="top-bar__left">
+      <div class="logo">
+        <div class="logo__icon">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <line x1="3" y1="9" x2="21" y2="9"/>
+            <line x1="9" y1="3" x2="9" y2="21"/>
+          </svg>
+        </div>
+        <span class="logo__text">Pipeline Sim</span>
+        <span class="logo__badge">Package 1</span>
+      </div>
+    </div>
+    <div class="top-bar__center">
+      <span class="cycle-display" id="cycleDisplay">Cycle <span id="cycleNum">0</span></span>
+    </div>
+    <div class="top-bar__right">
+      <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ───── Main Layout ───── -->
+  <main class="app">
+
+    <!-- Left: Code Editor + Controls -->
+    <section class="panel panel--editor" id="editorPanel">
+      <div class="panel__header">
+        <h2 class="panel__title">Assembly Program</h2>
+        <div class="panel__actions">
+          <button class="btn btn--ghost btn--sm" id="btnLoadSample" title="Load sample program">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Sample
+          </button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <div class="line-numbers" id="lineNumbers"></div>
+        <textarea class="editor" id="codeEditor" spellcheck="false" placeholder="Enter assembly instructions...
+Example:
+ADDI R1 R0 5
+ADDI R2 R0 10
+ADD R1 R2 R3"></textarea>
+      </div>
+      <div class="controls">
+        <button class="btn btn--primary" id="btnRun" title="Run entire program">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run
+        </button>
+        <button class="btn btn--accent" id="btnStep" title="Advance one cycle">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 3 5 21"/><polygon points="11 3 22 12 11 21 11 3"/></svg>
+          Step
+        </button>
+        <button class="btn btn--ghost" id="btnReset" title="Reset simulation">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Reset
+        </button>
+        <div class="speed-control">
+          <label for="speedSlider" class="speed-label">Speed</label>
+          <input type="range" id="speedSlider" min="50" max="1500" value="500" step="50">
+        </div>
+      </div>
+    </section>
+
+    <!-- Center: Pipeline Visualization -->
+    <section class="panel panel--pipeline" id="pipelinePanel">
+      <div class="panel__header">
+        <h2 class="panel__title">Pipeline Stages</h2>
+        <div class="panel__actions">
+          <span class="status-indicator" id="statusIndicator">
+            <span class="status-dot"></span>
+            <span id="statusText">Idle</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Pipeline Diagram -->
+      <div class="pipeline-diagram" id="pipelineDiagram">
+        <div class="stage" id="stage-IF" data-stage="IF">
+          <div class="stage__header">
+            <div class="stage__icon">IF</div>
+            <div class="stage__name">Fetch</div>
+          </div>
+          <div class="stage__body">
+            <div class="stage__field"><span class="field-label">PC</span><span class="field-value" id="if-pc">—</span></div>
+            <div class="stage__field"><span class="field-label">Raw</span><span class="field-value mono" id="if-raw">—</span></div>
+          </div>
+          <div class="stage__status" id="if-status">Empty</div>
+        </div>
+
+        <div class="stage-arrow"><svg viewBox="0 0 24 12" width="24" height="12"><path d="M0 6 L18 6 L14 2 M18 6 L14 10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+        <div class="stage" id="stage-ID" data-stage="ID">
+          <div class="stage__header">
+            <div class="stage__icon stage__icon--decode">ID</div>
+            <div class="stage__name">Decode</div>
+          </div>
+          <div class="stage__body">
+            <div class="stage__field"><span class="field-label">Op</span><span class="field-value" id="id-op">—</span></div>
+            <div class="stage__field"><span class="field-label">R1</span><span class="field-value" id="id-r1">—</span></div>
+            <div class="stage__field"><span class="field-label">R2</span><span class="field-value" id="id-r2">—</span></div>
+            <div class="stage__field"><span class="field-label">R3/Imm</span><span class="field-value" id="id-r3">—</span></div>
+            <div class="stage__field"><span class="field-label">Cycle</span><span class="field-value" id="id-cycle">—</span></div>
+          </div>
+          <div class="stage__status" id="id-status">Empty</div>
+        </div>
+
+        <div class="stage-arrow"><svg viewBox="0 0 24 12" width="24" height="12"><path d="M0 6 L18 6 L14 2 M18 6 L14 10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+        <div class="stage" id="stage-EX" data-stage="EX">
+          <div class="stage__header">
+            <div class="stage__icon stage__icon--execute">EX</div>
+            <div class="stage__name">Execute</div>
+          </div>
+          <div class="stage__body">
+            <div class="stage__field"><span class="field-label">Op</span><span class="field-value" id="ex-op">—</span></div>
+            <div class="stage__field"><span class="field-label">ALU</span><span class="field-value" id="ex-alu">—</span></div>
+            <div class="stage__field"><span class="field-label">Branch</span><span class="field-value" id="ex-branch">—</span></div>
+            <div class="stage__field"><span class="field-label">Cycle</span><span class="field-value" id="ex-cycle">—</span></div>
+          </div>
+          <div class="stage__status" id="ex-status">Empty</div>
+        </div>
+
+        <div class="stage-arrow"><svg viewBox="0 0 24 12" width="24" height="12"><path d="M0 6 L18 6 L14 2 M18 6 L14 10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+        <div class="stage" id="stage-MEM" data-stage="MEM">
+          <div class="stage__header">
+            <div class="stage__icon stage__icon--memory">MEM</div>
+            <div class="stage__name">Memory</div>
+          </div>
+          <div class="stage__body">
+            <div class="stage__field"><span class="field-label">Op</span><span class="field-value" id="mem-op">—</span></div>
+            <div class="stage__field"><span class="field-label">Addr</span><span class="field-value" id="mem-addr">—</span></div>
+            <div class="stage__field"><span class="field-label">Data</span><span class="field-value" id="mem-data">—</span></div>
+          </div>
+          <div class="stage__status" id="mem-status">Empty</div>
+        </div>
+
+        <div class="stage-arrow"><svg viewBox="0 0 24 12" width="24" height="12"><path d="M0 6 L18 6 L14 2 M18 6 L14 10" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></div>
+
+        <div class="stage" id="stage-WB" data-stage="WB">
+          <div class="stage__header">
+            <div class="stage__icon stage__icon--writeback">WB</div>
+            <div class="stage__name">Write Back</div>
+          </div>
+          <div class="stage__body">
+            <div class="stage__field"><span class="field-label">Op</span><span class="field-value" id="wb-op">—</span></div>
+            <div class="stage__field"><span class="field-label">Dest</span><span class="field-value" id="wb-dest">—</span></div>
+            <div class="stage__field"><span class="field-label">Value</span><span class="field-value" id="wb-value">—</span></div>
+          </div>
+          <div class="stage__status" id="wb-status">Empty</div>
+        </div>
+      </div>
+
+      <!-- Pipeline Timeline Table -->
+      <div class="timeline-wrap">
+        <h3 class="section-title">Pipeline Timeline</h3>
+        <div class="timeline-scroll" id="timelineScroll">
+          <table class="timeline-table" id="timelineTable">
+            <thead>
+              <tr id="timelineHeader">
+                <th class="timeline-th timeline-th--instr">Instruction</th>
+              </tr>
+            </thead>
+            <tbody id="timelineBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right: Registers + Memory + Log -->
+    <section class="panel panel--state" id="statePanel">
+      <!-- Tabs -->
+      <div class="state-tabs" id="stateTabs">
+        <button class="state-tab active" data-tab="registers">Registers</button>
+        <button class="state-tab" data-tab="memory">Memory</button>
+        <button class="state-tab" data-tab="log">Log</button>
+      </div>
+
+      <!-- Registers -->
+      <div class="state-content active" id="tab-registers">
+        <div class="register-grid" id="registerGrid"></div>
+      </div>
+
+      <!-- Memory -->
+      <div class="state-content" id="tab-memory">
+        <div class="memory-controls">
+          <div class="mem-toggle-group">
+            <button class="mem-toggle active" data-segment="instr" id="memSegInstr">Instructions (0–1023)</button>
+            <button class="mem-toggle" data-segment="data" id="memSegData">Data (1024–2047)</button>
+          </div>
+          <div class="mem-search">
+            <input type="number" id="memJumpAddr" placeholder="Go to address…" min="0" max="2047">
+          </div>
+        </div>
+        <div class="memory-grid" id="memoryGrid"></div>
+      </div>
+
+      <!-- Log -->
+      <div class="state-content" id="tab-log">
+        <div class="log-console" id="logConsole">
+          <div class="log-entry log-entry--info">Pipeline simulator ready. Load a program and press Run or Step.</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="simulator.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
