@@ -73,6 +73,9 @@ typedef struct {
     int32_t val_r2;              /* value of R2 */
     int32_t val_r3;              /* value of R3 */
 
+    /* Destination Register (where the result goes) */
+    int dest_reg;                /* register index to write back to (0-31) */
+
     /* Populated during EXECUTE */
     int32_t alu_result;
     int branch_taken;            /* 1 if branch/jump condition met */
@@ -80,6 +83,12 @@ typedef struct {
 
     /* Populated during MEMORY */
     int32_t mem_read_data;       /* data loaded (LW) */
+
+    /* Control Signals (generated during Decode) */
+    int reg_write;               /* 1 if WB should write to dest_reg */
+    int mem_read;                /* 1 if MEM should read from memory */
+    int mem_write;               /* 1 if MEM should write to memory */
+    int mem_to_reg;              /* 1 if WB uses mem data, 0 for ALU result */
 
 } InstructionContext;
 
@@ -92,11 +101,11 @@ extern int instruction_count;    /* total instructions loaded */
 extern int program_done;         /* 1 when all instructions retired */
 
 /* Pipeline stage registers */
-extern InstructionContext IF_stage;
-extern InstructionContext ID_stage;
-extern InstructionContext EX_stage;
-extern InstructionContext MEM_stage;
-extern InstructionContext WB_stage;
+extern InstructionContext IF_Stage;
+extern InstructionContext ID_Stage;
+extern InstructionContext EX_Stage;
+extern InstructionContext MEM_Stage;
+extern InstructionContext WB_Stage;
 
 /* ---- Utility ----------------------------------------------- */
 const char *opcode_to_string(int opcode);

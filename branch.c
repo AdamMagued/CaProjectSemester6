@@ -21,58 +21,9 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include "globals.h"
 
-/* ================================================================
- * External references to pipeline_simulator.c globals
- * ================================================================
- *
- * We declare only what we need here.  The canonical struct definition
- * and global variables live in pipeline_simulator.c.  By re-declaring
- * the struct identically and using 'extern', the linker connects us
- * to the same EX_Stage instance used by the rest of the pipeline.
- * ================================================================ */
-
-/* --- Instruction Opcodes (must match pipeline_simulator.c) --- */
-#define OP_BNE  4
-#define OP_J    7
-
-/* --- Pipeline Baton Struct (must match pipeline_simulator.c) --- */
-typedef struct {
-    int is_active;
-    int cycles_remaining;
-
-    int32_t instruction_address;
-    int32_t raw_instruction;
-
-    int opcode;
-    int r1;
-    int r2;
-    int r3;
-    int shamt;
-    int32_t imm;
-    int32_t address;
-
-    int32_t val_r1;
-    int32_t val_r2;
-    int32_t val_r3;
-
-    int dest_reg;
-
-    int32_t alu_result;
-    int branch_taken;
-    int32_t branch_target;
-
-    int32_t mem_read_data;
-
-    int reg_write;
-    int mem_read;
-    int mem_write;
-    int mem_to_reg;
-
-} InstructionContext;
-
-/* The actual EX_Stage lives in pipeline_simulator.c */
-extern InstructionContext EX_Stage;
+/* All opcodes, InstructionContext, and EX_Stage are defined in globals.h / globals.c */
 
 /*
  * execute_branch()

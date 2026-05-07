@@ -25,11 +25,11 @@ int instruction_count = 0;
 int program_done = 0;
 
 /* Pipeline stage registers */
-InstructionContext IF_stage;
-InstructionContext ID_stage;
-InstructionContext EX_stage;
-InstructionContext MEM_stage;
-InstructionContext WB_stage;
+InstructionContext IF_Stage;
+InstructionContext ID_Stage;
+InstructionContext EX_Stage;
+InstructionContext MEM_Stage;
+InstructionContext WB_Stage;
 
 /* ---- Utility functions ------------------------------------- */
 
