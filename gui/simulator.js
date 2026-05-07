@@ -170,7 +170,7 @@ const Simulator = (() => {
 
   /* ── Fetch ────────────────────────────────────────────────── */
   function Fetch() {
-    if (memory[PC] === 0) {
+    if (PC >= instruction_count) {
       PC = 1024;
       IF_Stage.is_active = 0;
       return;
@@ -404,15 +404,51 @@ const Simulator = (() => {
     }
   }
 
+  /* ── Data Hazard Check (mirrors C stalling logic) ──────────── */
+  function getSourceRegs(raw) {
+    const opcode = (raw >>> 28) & 0xF;
+    const r1 = (raw >>> 23) & 0x1F;
+    const r2 = (raw >>> 18) & 0x1F;
+    let src1 = -1, src2 = -1;
+    switch (opcode) {
+      case OP.ADD: case OP.SUB: case OP.BNE: case OP.SW:
+        src1 = r1; src2 = r2; break;
+      case OP.MULI: case OP.ADDI: case OP.ANDI: case OP.XORI:
+      case OP.SLL: case OP.SRL: case OP.LW:
+        src1 = r2; break;
+    }
+    return { src1, src2 };
+  }
+
+  function checkDataHazard() {
+    if (!ID_Stage.is_active) return false;
+    const { src1, src2 } = getSourceRegs(ID_Stage.raw_instruction);
+    if (src1 === -1 && src2 === -1) return false;
+    const stages = [EX_Stage, MEM_Stage, WB_Stage];
+    for (const s of stages) {
+      if (!s.is_active || !s.reg_write) continue;
+      if (s.dest_reg <= 0) continue;
+      if (s.dest_reg === src1 || s.dest_reg === src2) {
+        addLog(`[STALL] R${s.dest_reg} needed by PC ${ID_Stage.instruction_address}, waiting on PC ${s.instruction_address}`, 'hazard');
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Snapshot of IF for UI display (IF is transient — fetched & transferred in same cycle)
+  let IF_Snapshot = emptyCtx();
+
   /* ── Main Clock Step (mirrors the while-loop in pipeline_simulator.c) ─── */
   function step() {
     if (program_done) return false;
 
     clock_cycle++;
+    IF_Snapshot = emptyCtx(); // reset snapshot each cycle
     addLog(`━━━ Cycle ${clock_cycle} ━━━`, 'cycle');
 
     // Check termination
-    if (PC >= 1024 &&
+    if (PC >= instruction_count &&
         !IF_Stage.is_active && !ID_Stage.is_active &&
         !EX_Stage.is_active && !MEM_Stage.is_active && !WB_Stage.is_active) {
       program_done = true;
@@ -462,22 +498,28 @@ const Simulator = (() => {
       }
     }
 
-    // 4. DECODE (2 cycles)
+    // 4. DECODE (2 cycles) — with data hazard stalling
+    let stalled = false;
     if (ID_Stage.is_active) {
-      ID_Stage.cycles_remaining++;
-      Decode();
-      if (ID_Stage.cycles_remaining === 2) {
-        EX_Stage = { ...ID_Stage };
-        EX_Stage.cycles_remaining = 0;
-        ID_Stage = emptyCtx();
+      if (ID_Stage.cycles_remaining === 0 && checkDataHazard()) {
+        stalled = true;
+      } else {
+        ID_Stage.cycles_remaining++;
+        Decode();
+        if (ID_Stage.cycles_remaining === 2) {
+          EX_Stage = { ...ID_Stage };
+          EX_Stage.cycles_remaining = 0;
+          ID_Stage = emptyCtx();
+        }
       }
     }
 
-    // 5. FETCH (odd cycles only)
-    if (clock_cycle % 2 !== 0 && PC >= 0 && PC < 1024) {
+    // 5. FETCH (odd cycles only, not during a stall)
+    if (!stalled && clock_cycle % 2 !== 0 && PC >= 0 && PC < instruction_count) {
       IF_Stage.is_active = 1;
       Fetch();
       if (IF_Stage.is_active) {
+        IF_Snapshot = { ...IF_Stage };  // <-- save for UI
         ID_Stage = { ...IF_Stage };
         IF_Stage = emptyCtx();
       }
@@ -499,6 +541,7 @@ const Simulator = (() => {
     program_done = false;
     log = [];
     IF_Stage = emptyCtx();
+    IF_Snapshot = emptyCtx();
     ID_Stage = emptyCtx();
     EX_Stage = emptyCtx();
     MEM_Stage = emptyCtx();
@@ -520,7 +563,7 @@ const Simulator = (() => {
       instruction_count,
       memory,
       registers: Array.from(registers),
-      IF: { ...IF_Stage },
+      IF: { ...IF_Snapshot },
       ID: { ...ID_Stage },
       EX: { ...EX_Stage },
       MEM: { ...MEM_Stage },
